@@ -18,7 +18,13 @@ members/nodes to be able to attempt to join one. This daemon is what you want.
 This could easily be achieved with awscli + bash + jq, but it is a handful of API calls,
 and sifting through results so I opted to do it all in a single binary instead.
 
-## Ports
+## Prerequisites
+
+Designed to be run on EC2 within an Amazon ECS cluster, inside a Docker container (and with the default networking topology).
+This utility will attempt to access the ECS agent on http://172.17.42.1:51678/ in addition to the AWS APIs. Access to the local
+Docker daemon socket is not required.
+
+## Service/Task Ports
 
 There is an expectation you will know the service port already, and all tasks under a given service
 will have that port open. This utility only deals with retrieving the correct IP addresses, ports

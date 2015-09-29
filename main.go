@@ -1,12 +1,5 @@
 // Written by Nathan Sullivan <nathan@nightsys.net>
 
-// Consul discoverer binary that searches for all other consul servers and returns the IP addresses
-// to allow a new Consul process to join the existing cluster.
-
-// Designed to be run on EC2 within an ECS cluster, inside a Docker container (and with the default networking topology).
-
-// Would have required lots of hacks and magic to do this in bash + awscli + jq, easier this way.
-
 package main
 
 import (
