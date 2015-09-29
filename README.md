@@ -13,7 +13,7 @@ and exits in under 300ms (most of that AWS API latencies), I am happy :)
 
 So let's say you want to orchestrate a cluster of containers running on top of Amazon ECS,
 for example a service like Consul. You need to obtain the IP addresses of all other potential
-members/nodes to be able to attempt to join one. This daemon is what you want.
+members/nodes to be able to attempt to join one. This utility provides you the other node addresses to use.
 
 This could easily be achieved with awscli + bash + jq, but it is a handful of API calls,
 and sifting through results so I opted to do it all in a single binary instead.
