@@ -1,4 +1,4 @@
-# ECS Service Discovery Tool - for Cluster Orchestration
+# Amazon ECS Discovery Tool - Cluster Orchestration
 
 ## Disclaimer
 
