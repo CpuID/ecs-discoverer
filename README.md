@@ -1,5 +1,6 @@
-# Amazon ECS Discovery Tool
-# Designed as a Cluster Orchestration helper
+# Amazon ECS Service Discovery Tool
+
+Designed as a Cluster Orchestration helper, more info below.
 
 ## Disclaimer
 
