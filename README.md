@@ -6,7 +6,8 @@ Designed as a Cluster Orchestration helper, more info below.
 
 This is one of my first Golang projects I have completed start-to-finish, the codebase could use
 some splitting up/separation into more modular pieces, but it performs the task required for now
-so not really too concerned. I am sure there are lots of improvements that can be made, but being it runs
+so not really too concerned. I spent less than a day in total on it.
+I am sure there are lots of improvements that can be made, but being it runs
 and exits in under 300ms (most of that AWS API latencies), I am happy :)
 
 ## Details
