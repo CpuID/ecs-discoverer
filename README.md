@@ -49,7 +49,7 @@ root@cddb6164b344:/# ./discoverer nginx
 go build
 ```
 
-Single binary, copy/put into the Docker container of your choice. I'll get around to releasing binaries at some point possibly.
+Single binary, copy/put into the Docker container of your choice. Or download a binary release if it suffices for you.
 
 ## IAM Policy
 
