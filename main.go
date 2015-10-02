@@ -95,7 +95,7 @@ func getContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	}
 
 	if len(list_tasks_resp.TaskArns) <= 0 {
-		fmt.Println("No ECS tasks found with specified filter - cluster: ", cluster, ", service: ", service)
+		fmt.Println("No ECS tasks found with specified filter - cluster:", cluster, ",service:", service)
 		os.Exit(1)
 	}
 
@@ -113,7 +113,7 @@ func getContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	}
 
 	if len(describe_tasks_resp.Tasks) <= 0 {
-		fmt.Println("No ECS task details found with specified filter - tasks: ", strings.Join(aws.StringValueSlice(list_tasks_resp.TaskArns), ", "))
+		fmt.Println("No ECS task details found with specified filter - tasks:", strings.Join(aws.StringValueSlice(list_tasks_resp.TaskArns), ", "))
 		os.Exit(1)
 	}
 
@@ -121,8 +121,11 @@ func getContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	for _, value := range describe_tasks_resp.Tasks {
 		if *value.LastStatus == "RUNNING" && *value.ContainerInstanceArn != local_container_instance_arn {
 			result = append(result, *value.ContainerInstanceArn)
+		} else {
+			if debug == true {
+				fmt.Println(*value.ContainerInstanceArn, "is not in a RUNNING state, or is this instance (we dont return ourself). Excluded from results.")
+			}
 		}
-		// TODOLATER - debug output to explain why task was not included in results.
 	}
 
 	if len(result) == 0 {
@@ -146,7 +149,7 @@ func getEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, c
 	}
 
 	if len(resp.ContainerInstances) <= 0 {
-		fmt.Println("No ECS container instances found with specified filter - cluster: ", cluster, " - instances: ", strings.Join(container_instances, ", "))
+		fmt.Println("No ECS container instances found with specified filter - cluster:", cluster, "- instances:", strings.Join(container_instances, ", "))
 		os.Exit(1)
 	}
 
@@ -154,8 +157,11 @@ func getEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, c
 	for _, value := range resp.ContainerInstances {
 		if *value.Status == "ACTIVE" {
 			result = append(result, *value.Ec2InstanceId)
+		} else {
+			if debug == true {
+				fmt.Println(*value.Ec2InstanceId, "is not in an ACTIVE state, excluded from results.")
+			}
 		}
-		// TODOLATER - debug output that container instance was not active in else clause.
 	}
 
 	if len(result) == 0 {
@@ -187,11 +193,16 @@ func getEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string) []
 	}
 
 	var result []string
-	for _, value := range resp.Reservations[0].Instances {
-		if *value.State.Name == "running" {
-			result = append(result, *value.PrivateIpAddress)
+	for idx, _ := range resp.Reservations {
+		for _, value := range resp.Reservations[idx].Instances {
+			if *value.State.Name == "running" {
+				result = append(result, *value.PrivateIpAddress)
+			} else {
+				if debug == true {
+					fmt.Println(*value.InstanceId, "is not in a running state, excluded from results.")
+				}
+			}
 		}
-		// TODOLATER - debug output that instance was not running in else clause.
 	}
 
 	if len(result) == 0 {
@@ -201,13 +212,21 @@ func getEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string) []
 	return result
 }
 
+var debug bool
+
 func main() {
 	// Check that the ECS service name is passed in as an argument.
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: ", os.Args[0], " ecs_service_name")
+	if len(os.Args) != 2 && len(os.Args) != 3 {
+		fmt.Println("Usage:", os.Args[0], "ecs_service_name [debug]")
 		os.Exit(1)
 	}
 	ecs_service := os.Args[1]
+	if len(os.Args) == 3 && os.Args[2] == "debug" {
+		fmt.Println("Debug Mode Enabled")
+		debug = true
+	} else {
+		debug = false
+	}
 
 	// Get the metadata from the ECS agent on the local Docker host.
 	local_ecs_agent_metadata := getEcsAgentMetadata()
@@ -235,18 +254,27 @@ func main() {
 	// Check that the service exists.
 	verifyServiceExists(ecs_obj, ecs_cluster, ecs_service)
 
-	// TODO - do we want to get the listen ports for each task? or just assume a port...?
+	// TODOLATER - do we want to get the listen ports for each task? or just assume a port...?
+	// readme states ports are outside the scope for now.
 
 	// Get all tasks for the given service, in this ECS cluster. We exclude the current container instance in the result,
 	// as we only need to know about all other instances.
 	container_instances := getContainerInstanceArnsForService(ecs_obj, ecs_cluster, ecs_service, local_ecs_agent_metadata.ContainerInstanceArn)
+	if debug == true {
+		fmt.Println("container_instances:", strings.Join(container_instances, ","))
+	}
 
 	// Get EC2 instance IDs for all container instances returned.
 	instance_ids := getEc2InstanceIdsFromContainerInstances(ecs_obj, ecs_cluster, container_instances)
+	if debug == true {
+		fmt.Println("instance_ids:", strings.Join(instance_ids, ","))
+	}
 
 	// Get the private IP of the EC2 (container) instance running the ECS agent.
 	instance_private_ips := getEc2PrivateIpsFromInstanceIds(ec2_obj, instance_ids)
+	if debug == true {
+		fmt.Println("instance_private_ips:", strings.Join(instance_private_ips, ","))
+	}
 
-	// TODO - return the IPs in an acceptable format for use as consul join line?
 	fmt.Println(strings.Join(instance_private_ips, ","))
 }
