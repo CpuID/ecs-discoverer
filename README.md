@@ -22,8 +22,9 @@ and sifting through results so I opted to do it all in a single binary instead.
 ## Prerequisites
 
 Designed to be run on EC2 within an Amazon ECS cluster, inside a Docker container (and with the default networking topology).
-This utility will attempt to access the ECS agent on http://172.17.42.1:51678/ in addition to the AWS APIs. Access to the local
-Docker daemon socket is not required.
+This utility will attempt to access the ECS agent on http://172.17.0.1:51678/ in addition to the AWS APIs. Access to the local
+Docker daemon socket is not required. In future ideally this would support handling Docker networks, with a custom IP to hit,
+for now it just hits the default bridge network docker0 IP.
 
 ## Service/Task Ports
 

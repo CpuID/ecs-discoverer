@@ -22,10 +22,11 @@ type EcsAgentMetadata struct {
 	Version              string `json:"Version"`
 }
 
+// TODO: deal with docker custom networks. for now this just hits the default bridge network IP.
 func getEcsAgentMetadata() EcsAgentMetadata {
-	resp, err := http.Get("http://172.17.42.1:51678/v1/metadata")
+	resp, err := http.Get("http://172.17.0.1:51678/v1/metadata")
 	if err != nil {
-		fmt.Println("Error retrieving metadata from ECS agent on local Docker host (via 172.17.42.1:51678):")
+		fmt.Println("Error retrieving metadata from ECS agent on local Docker host (via 172.17.0.1:51678):")
 		fmt.Println(err)
 		os.Exit(1)
 	}
