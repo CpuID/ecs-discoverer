@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"io/ioutil"
@@ -233,7 +234,7 @@ func main() {
 	local_ecs_agent_metadata := getEcsAgentMetadata()
 
 	// Discover the region which this instance resides.
-	metadata := ec2metadata.New(&ec2metadata.Config{})
+	metadata := ec2metadata.New(session.New())
 	region, err := metadata.Region()
 	if err != nil {
 		fmt.Println("Cannot retrieve AWS region from EC2 Metadata Service:")
@@ -244,13 +245,13 @@ func main() {
 	// Discover the ECS cluster this EC2 instance belongs to, via local ECS agent.
 	ecs_cluster := local_ecs_agent_metadata.Cluster
 
-	// Reusable config object for AWS services with current region attached.
-	aws_config := &aws.Config{Region: aws.String(region)}
+	// Reusable config session object for AWS services with current region attached.
+	aws_config_session := session.New(&aws.Config{Region: aws.String(region)})
 
 	// Create an ECS service object.
-	ecs_obj := ecs.New(aws_config)
+	ecs_obj := ecs.New(aws_config_session)
 	// Create an EC2 service object.
-	ec2_obj := ec2.New(aws_config)
+	ec2_obj := ec2.New(aws_config_session)
 
 	// Check that the service exists.
 	verifyServiceExists(ecs_obj, ecs_cluster, ecs_service)
