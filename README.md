@@ -40,9 +40,11 @@ container instances for now). The result will be a CSV of VPC/private IPs, exclu
 instance (you normally don't want to attempt to join yourself if orchestrating a cluster):
 
 ```
-root@cddb6164b344:/# ./discoverer nginx
+root@cddb6164b344:/# ./ecs-discoverer -s nginx
 10.20.0.97
 ```
+
+Use `./ecs-discoverer --help` for a full help listing.
 
 ## Building
 

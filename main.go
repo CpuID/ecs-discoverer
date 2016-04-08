@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ecs"
+	"github.com/codegangsta/cli"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -65,6 +66,30 @@ func formatAwsError(err error) {
 	}
 }
 
+// Verify that the ECS cluster exists.
+func verifyClusterExists(ecs_obj *ecs.ECS, cluster string) {
+	params := &ecs.DescribeClustersInput{
+		Clusters: []*string{
+			aws.String(cluster),
+		},
+	}
+	clusters, err := ecs_obj.DescribeClusters(params)
+
+	if err != nil {
+		fmt.Println("Cannot verify if ECS cluster exists:")
+		formatAwsError(err)
+		os.Exit(1)
+	}
+	if len(clusters.Clusters) == 0 {
+		fmt.Printf("Error: ECS Cluster '%s' does not exist, cannot proceed.\n", cluster)
+		os.Exit(1)
+	}
+	if len(clusters.Clusters) != 1 {
+		fmt.Printf("Error: Unexpected number of ECS Clusters returned when searching for '%s'. Received: %+v\n", cluster, clusters.Clusters)
+		os.Exit(1)
+	}
+}
+
 // Verify that the ECS service exists.
 func verifyServiceExists(ecs_obj *ecs.ECS, cluster string, service string) {
 	params := &ecs.DescribeServicesInput{
@@ -82,7 +107,7 @@ func verifyServiceExists(ecs_obj *ecs.ECS, cluster string, service string) {
 	}
 }
 
-func getContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, service string, local_container_instance_arn string) []string {
+func getContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, service string, local_container_instance_arn string, debug bool) []string {
 	// Fetch a task list based on the service name.
 	list_tasks_params := &ecs.ListTasksInput{
 		Cluster:     &cluster,
@@ -137,7 +162,7 @@ func getContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	return result
 }
 
-func getEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, container_instances []string) []string {
+func getEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, container_instances []string, debug bool) []string {
 	params := &ecs.DescribeContainerInstancesInput{
 		Cluster:            aws.String(cluster),
 		ContainerInstances: aws.StringSlice(container_instances),
@@ -173,7 +198,7 @@ func getEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, c
 	return result
 }
 
-func getEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string) []string {
+func getEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string, debug bool) []string {
 	params := &ec2.DescribeInstancesInput{
 		InstanceIds: aws.StringSlice(instance_ids),
 	}
@@ -214,22 +239,7 @@ func getEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string) []
 	return result
 }
 
-var debug bool
-
-func main() {
-	// Check that the ECS service name is passed in as an argument.
-	if len(os.Args) != 2 && len(os.Args) != 3 {
-		fmt.Println("Usage:", os.Args[0], "ecs_service_name [debug]")
-		os.Exit(1)
-	}
-	ecs_service := os.Args[1]
-	if len(os.Args) == 3 && os.Args[2] == "debug" {
-		fmt.Println("Debug Mode Enabled")
-		debug = true
-	} else {
-		debug = false
-	}
-
+func doMain(current_cluster bool, cluster_name string, ecs_service string, debug bool) {
 	// Get the metadata from the ECS agent on the local Docker host.
 	local_ecs_agent_metadata := getEcsAgentMetadata()
 
@@ -242,16 +252,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Discover the ECS cluster this EC2 instance belongs to, via local ECS agent.
-	ecs_cluster := local_ecs_agent_metadata.Cluster
-
 	// Reusable config session object for AWS services with current region attached.
+	// TODOLATER: support other regions via a flag.
 	aws_config_session := session.New(&aws.Config{Region: aws.String(region)})
 
 	// Create an ECS service object.
 	ecs_obj := ecs.New(aws_config_session)
 	// Create an EC2 service object.
 	ec2_obj := ec2.New(aws_config_session)
+
+	var ecs_cluster string
+	if current_cluster == true {
+		// Discover the ECS cluster this EC2 instance belongs to, via local ECS agent.
+		ecs_cluster = local_ecs_agent_metadata.Cluster
+	} else {
+		// Use the user provided WAN cluster, for connecting to services in a different ECS Cluster.
+		// First we verify the cluster exists before proceeding.
+		verifyClusterExists(ecs_obj, cluster_name)
+		ecs_cluster = cluster_name
+	}
 
 	// Check that the service exists.
 	verifyServiceExists(ecs_obj, ecs_cluster, ecs_service)
@@ -261,22 +280,67 @@ func main() {
 
 	// Get all tasks for the given service, in this ECS cluster. We exclude the current container instance in the result,
 	// as we only need to know about all other instances.
-	container_instances := getContainerInstanceArnsForService(ecs_obj, ecs_cluster, ecs_service, local_ecs_agent_metadata.ContainerInstanceArn)
+	container_instances := getContainerInstanceArnsForService(ecs_obj, ecs_cluster, ecs_service, local_ecs_agent_metadata.ContainerInstanceArn, debug)
 	if debug == true {
 		fmt.Println("container_instances:", strings.Join(container_instances, ","))
 	}
 
 	// Get EC2 instance IDs for all container instances returned.
-	instance_ids := getEc2InstanceIdsFromContainerInstances(ecs_obj, ecs_cluster, container_instances)
+	instance_ids := getEc2InstanceIdsFromContainerInstances(ecs_obj, ecs_cluster, container_instances, debug)
 	if debug == true {
 		fmt.Println("instance_ids:", strings.Join(instance_ids, ","))
 	}
 
 	// Get the private IP of the EC2 (container) instance running the ECS agent.
-	instance_private_ips := getEc2PrivateIpsFromInstanceIds(ec2_obj, instance_ids)
+	instance_private_ips := getEc2PrivateIpsFromInstanceIds(ec2_obj, instance_ids, debug)
 	if debug == true {
 		fmt.Println("instance_private_ips:", strings.Join(instance_private_ips, ","))
 	}
 
 	fmt.Println(strings.Join(instance_private_ips, ","))
+}
+
+func parseFlags(c *cli.Context) (bool, string, string, bool) {
+	current_cluster := false
+	cluster := ""
+	if c.String("c") == "" {
+		current_cluster = true
+	} else {
+		cluster = c.String("cluster")
+	}
+	if c.String("s") == "" {
+		fmt.Printf("Error: Service (-s) must not be empty. Cannot proceed.\n\n")
+		cli.ShowAppHelp(c)
+		os.Exit(1)
+	}
+	return current_cluster, cluster, c.String("s"), c.Bool("d")
+}
+
+func main() {
+	app := cli.NewApp()
+	app.Name = "ecs-discoverer"
+	app.Version = "0.3.0"
+	app.Usage = "Discovery tool for Private IPs of ECS EC2 Container Instances for a given Service/Cluster"
+	app.Action = func(c *cli.Context) {
+		current_cluster, cluster, service, debug := parseFlags(c)
+		doMain(current_cluster, cluster, service, debug)
+	}
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "c",
+			Value: "",
+			Usage: "ECS Cluster Name (Optional - defaults to the ECS Cluster of this instance only)",
+		},
+		cli.BoolFlag{
+			Name:  "d",
+			Usage: "Debug Mode",
+		},
+		cli.StringFlag{
+			Name:  "s",
+			Value: "",
+			Usage: "ECS Service Name (Required)",
+		},
+	}
+
+	app.Run(os.Args)
 }
