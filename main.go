@@ -306,7 +306,7 @@ func parseFlags(c *cli.Context) (bool, string, string, bool) {
 	if c.String("c") == "" {
 		current_cluster = true
 	} else {
-		cluster = c.String("cluster")
+		cluster = c.String("c")
 	}
 	if c.String("s") == "" {
 		fmt.Printf("Error: Service (-s) must not be empty. Cannot proceed.\n\n")
