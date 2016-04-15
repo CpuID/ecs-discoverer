@@ -122,7 +122,7 @@ func getContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	}
 
 	if len(list_tasks_resp.TaskArns) <= 0 {
-		fmt.Println("No ECS tasks found with specified filter - cluster:", cluster, ",service:", service)
+		fmt.Println("No ECS tasks found with specified filter - cluster: ", cluster, ", service:", service)
 		os.Exit(1)
 	}
 
@@ -239,21 +239,29 @@ func getEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string, de
 	return result
 }
 
-func doMain(current_cluster bool, cluster_name string, ecs_service string, debug bool) {
-	// Get the metadata from the ECS agent on the local Docker host.
-	local_ecs_agent_metadata := getEcsAgentMetadata()
+func doMain(current_cluster bool, aws_region string, cluster_name string, ecs_service string, debug bool) {
+	var local_ecs_agent_metadata EcsAgentMetadata
+	if current_cluster == true {
+		// Get the metadata from the ECS agent on the local Docker host.
+		local_ecs_agent_metadata = getEcsAgentMetadata()
+	}
 
-	// Discover the region which this instance resides.
-	metadata := ec2metadata.New(session.New())
-	region, err := metadata.Region()
-	if err != nil {
-		fmt.Println("Cannot retrieve AWS region from EC2 Metadata Service:")
-		formatAwsError(err)
-		os.Exit(1)
+	var region string
+	if aws_region != "" {
+		region = aws_region
+	} else {
+		// Discover the region which this instance resides.
+		metadata := ec2metadata.New(session.New())
+		use_region, err := metadata.Region()
+		if err != nil {
+			fmt.Println("Cannot retrieve AWS region from EC2 Metadata Service:")
+			formatAwsError(err)
+			os.Exit(1)
+		}
+		region = use_region
 	}
 
 	// Reusable config session object for AWS services with current region attached.
-	// TODOLATER: support other regions via a flag.
 	aws_config_session := session.New(&aws.Config{Region: aws.String(region)})
 
 	// Create an ECS service object.
@@ -279,8 +287,12 @@ func doMain(current_cluster bool, cluster_name string, ecs_service string, debug
 	// readme states ports are outside the scope for now.
 
 	// Get all tasks for the given service, in this ECS cluster. We exclude the current container instance in the result,
-	// as we only need to know about all other instances.
-	container_instances := getContainerInstanceArnsForService(ecs_obj, ecs_cluster, ecs_service, local_ecs_agent_metadata.ContainerInstanceArn, debug)
+	// as we only need to know about all other instances. The exclusion only occurs when we are working on the current cluster.
+	current_container_instance_arn := "NONE"
+	if current_cluster == true {
+		current_container_instance_arn = local_ecs_agent_metadata.ContainerInstanceArn
+	}
+	container_instances := getContainerInstanceArnsForService(ecs_obj, ecs_cluster, ecs_service, current_container_instance_arn, debug)
 	if debug == true {
 		fmt.Println("container_instances:", strings.Join(container_instances, ","))
 	}
@@ -300,30 +312,38 @@ func doMain(current_cluster bool, cluster_name string, ecs_service string, debug
 	fmt.Println(strings.Join(instance_private_ips, ","))
 }
 
-func parseFlags(c *cli.Context) (bool, string, string, bool) {
+// current_cluster, aws_region, cluster, service, debug
+func parseFlags(c *cli.Context) (bool, string, string, string, bool) {
 	current_cluster := false
 	cluster := ""
+	aws_region := ""
 	if c.String("c") == "" {
 		current_cluster = true
 	} else {
 		cluster = c.String("c")
+		if c.String("r") == "" {
+			fmt.Printf("Error: If Cluster (-c) is specified, AWS Region (-r) is also required. Cannot proceed.\n\n")
+			cli.ShowAppHelp(c)
+			os.Exit(1)
+		}
+		aws_region = c.String("r")
 	}
 	if c.String("s") == "" {
 		fmt.Printf("Error: Service (-s) must not be empty. Cannot proceed.\n\n")
 		cli.ShowAppHelp(c)
 		os.Exit(1)
 	}
-	return current_cluster, cluster, c.String("s"), c.Bool("d")
+	return current_cluster, aws_region, cluster, c.String("s"), c.Bool("d")
 }
 
 func main() {
 	app := cli.NewApp()
 	app.Name = "ecs-discoverer"
-	app.Version = "0.3.1"
+	app.Version = "0.3.2"
 	app.Usage = "Discovery tool for Private IPs of ECS EC2 Container Instances for a given Service/Cluster"
 	app.Action = func(c *cli.Context) {
-		current_cluster, cluster, service, debug := parseFlags(c)
-		doMain(current_cluster, cluster, service, debug)
+		current_cluster, aws_region, cluster, service, debug := parseFlags(c)
+		doMain(current_cluster, aws_region, cluster, service, debug)
 	}
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -334,6 +354,11 @@ func main() {
 		cli.BoolFlag{
 			Name:  "d",
 			Usage: "Debug Mode",
+		},
+		cli.StringFlag{
+			Name:  "r",
+			Value: "",
+			Usage: "AWS Region (Optional - defaults to the location of this ECS Cluster instance)",
 		},
 		cli.StringFlag{
 			Name:  "s",
