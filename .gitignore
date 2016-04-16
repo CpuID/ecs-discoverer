@@ -22,3 +22,6 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+cpuid-ecs-discoverer*
+ecs-discoverer*
