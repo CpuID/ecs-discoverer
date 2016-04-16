@@ -1,5 +1,7 @@
 # Amazon ECS Service Discovery Tool
 
+[![Build Status](https://travis-ci.org/CpuID/ecs-discoverer.svg?branch=master)](https://travis-ci.org/CpuID/ecs-discoverer)
+
 Designed as a Cluster Orchestration helper, more info below.
 
 ## Disclaimer
