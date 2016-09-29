@@ -339,7 +339,7 @@ func parseFlags(c *cli.Context) (bool, string, string, string, bool) {
 func main() {
 	app := cli.NewApp()
 	app.Name = "ecs-discoverer"
-	app.Version = "0.3.2"
+	app.Version = ecs_discoverer_version
 	app.Usage = "Discovery tool for Private IPs of ECS EC2 Container Instances for a given Service/Cluster"
 	app.Action = func(c *cli.Context) {
 		current_cluster, aws_region, cluster, service, debug := parseFlags(c)
