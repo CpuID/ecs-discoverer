@@ -77,11 +77,12 @@ build_image="ecs_discoverer_build"
 build_container="ecs_discoverer_builder"
 docker build -t "$build_image" .
 docker run -d --name "$build_container" "$build_image" tail -f /dev/null
-docker exec -it "$build_container" sh -c "cd /tmp && go get -d && GOOS=linux GOARCH=amd64 go build"
-docker cp "$build_container:/tmp/tmp" "${DIR}/bin/ecs-discoverer-${new_version}-linux_musl_amd64"
-docker stop -t 1 "$build_container"
-docker rm "$build_container"
-docker rmi "$build_image"
+echo "$(date) : Fetching golang dependencies within container"
+docker exec -it "$build_container" sh -c "cd /tmp/ecs-discoverer && go get -d"
+echo "$(date) : Running go build within container"
+docker exec -it "$build_container" sh -c "cd /tmp/ecs-discoverer && GOOS=linux GOARCH=amd64 go build"
+docker cp "$build_container:/tmp/ecs-discoverer/ecs-discoverer" "${DIR}/bin/ecs-discoverer-${new_version}-linux_musl_amd64"
+trap "echo 'Cleaning up containers/images'; docker stop -t 1 $build_container && docker rm $build_container && docker rmi $build_image" EXIT QUIT TERM
 echo "$(date) : Build for Alpine Linux completed"
 
 # Create git tag
