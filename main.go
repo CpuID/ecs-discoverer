@@ -49,6 +49,7 @@ func getEcsAgentMetadata() (EcsAgentMetadata, error) {
 
 func doMain(current_cluster bool, aws_region string, cluster_name string, ecs_service string, debug bool) {
 	var local_ecs_agent_metadata EcsAgentMetadata
+	var err error
 	if current_cluster == true {
 		// Get the metadata from the ECS agent on the local Docker host.
 		local_ecs_agent_metadata, err = getEcsAgentMetadata()
@@ -97,7 +98,7 @@ func doMain(current_cluster bool, aws_region string, cluster_name string, ecs_se
 	}
 
 	// Check that the service exists.
-	err := shared.VerifyServiceExists(ecs_obj, ecs_cluster, ecs_service)
+	err = shared.VerifyServiceExists(ecs_obj, ecs_cluster, ecs_service)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
