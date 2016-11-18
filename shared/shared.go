@@ -2,7 +2,6 @@ package shared
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -45,6 +44,7 @@ func VerifyClusterExists(ecs_obj *ecs.ECS, cluster string) error {
 	if len(clusters.Clusters) != 1 {
 		return fmt.Errorf("Error: Unexpected number of ECS Clusters returned when searching for '%s'. Received: %+v\n", cluster, clusters.Clusters)
 	}
+	return nil
 }
 
 // Verify that the ECS service exists.
@@ -60,6 +60,7 @@ func VerifyServiceExists(ecs_obj *ecs.ECS, cluster string, service string) error
 	if err != nil {
 		return fmt.Errorf("Cannot verify if ECS service exists: %s", FormatAwsError(err))
 	}
+	return nil
 }
 
 func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, service string, local_container_instance_arn string, debug bool) ([]string, error) {
