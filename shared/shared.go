@@ -10,6 +10,20 @@ import (
 	"github.com/aws/aws-sdk-go/service/ecs"
 )
 
+// Save some repetition, formatting the output of these.
+func FormatAwsError(err error) {
+	if awsErr, ok := err.(awserr.Error); ok {
+		// Generic AWS Error with Code, Message, and original error (if any)
+		fmt.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+		if reqErr, ok := err.(awserr.RequestFailure); ok {
+			// A service error occurred
+			fmt.Println(reqErr.StatusCode(), reqErr.RequestID())
+		}
+	} else {
+		fmt.Println(err.Error())
+	}
+}
+
 // Verify that the ECS cluster exists.
 func VerifyClusterExists(ecs_obj *ecs.ECS, cluster string) {
 	params := &ecs.DescribeClustersInput{
@@ -21,7 +35,7 @@ func VerifyClusterExists(ecs_obj *ecs.ECS, cluster string) {
 
 	if err != nil {
 		fmt.Println("Cannot verify if ECS cluster exists:")
-		formatAwsError(err)
+		FormatAwsError(err)
 		os.Exit(1)
 	}
 	if len(clusters.Clusters) == 0 {
@@ -46,7 +60,7 @@ func VerifyServiceExists(ecs_obj *ecs.ECS, cluster string, service string) {
 
 	if err != nil {
 		fmt.Println("Cannot verify if ECS service exists:")
-		formatAwsError(err)
+		FormatAwsError(err)
 		os.Exit(1)
 	}
 }
@@ -61,7 +75,7 @@ func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 
 	if list_tasks_err != nil {
 		fmt.Println("Cannot retrieve ECS task list:")
-		formatAwsError(list_tasks_err)
+		FormatAwsError(list_tasks_err)
 		os.Exit(1)
 	}
 
@@ -79,7 +93,7 @@ func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 
 	if describe_tasks_err != nil {
 		fmt.Println("Cannot retrieve ECS task details:")
-		formatAwsError(describe_tasks_err)
+		FormatAwsError(describe_tasks_err)
 		os.Exit(1)
 	}
 
@@ -115,7 +129,7 @@ func GetEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, c
 
 	if err != nil {
 		fmt.Println("Cannot retrieve ECS container instance information:")
-		formatAwsError(err)
+		FormatAwsError(err)
 		os.Exit(1)
 	}
 
@@ -150,7 +164,7 @@ func GetEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string, de
 
 	if err != nil {
 		fmt.Println("Cannot retrieve EC2 instance information:")
-		formatAwsError(err)
+		FormatAwsError(err)
 		os.Exit(1)
 	}
 

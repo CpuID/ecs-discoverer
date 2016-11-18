@@ -54,20 +54,6 @@ func getEcsAgentMetadata() EcsAgentMetadata {
 	return json_data
 }
 
-// Save some repetition, formatting the output of these.
-func formatAwsError(err error) {
-	if awsErr, ok := err.(awserr.Error); ok {
-		// Generic AWS Error with Code, Message, and original error (if any)
-		fmt.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
-		if reqErr, ok := err.(awserr.RequestFailure); ok {
-			// A service error occurred
-			fmt.Println(reqErr.StatusCode(), reqErr.RequestID())
-		}
-	} else {
-		fmt.Println(err.Error())
-	}
-}
-
 func doMain(current_cluster bool, aws_region string, cluster_name string, ecs_service string, debug bool) {
 	var local_ecs_agent_metadata EcsAgentMetadata
 	if current_cluster == true {
@@ -84,7 +70,7 @@ func doMain(current_cluster bool, aws_region string, cluster_name string, ecs_se
 		use_region, err := metadata.Region()
 		if err != nil {
 			fmt.Println("Cannot retrieve AWS region from EC2 Metadata Service:")
-			formatAwsError(err)
+			shared.FormatAwsError(err)
 			os.Exit(1)
 		}
 		region = use_region
@@ -105,12 +91,12 @@ func doMain(current_cluster bool, aws_region string, cluster_name string, ecs_se
 	} else {
 		// Use the user provided WAN cluster, for connecting to services in a different ECS Cluster.
 		// First we verify the cluster exists before proceeding.
-		verifyClusterExists(ecs_obj, cluster_name)
+		shared.VerifyClusterExists(ecs_obj, cluster_name)
 		ecs_cluster = cluster_name
 	}
 
 	// Check that the service exists.
-	verifyServiceExists(ecs_obj, ecs_cluster, ecs_service)
+	shared.VerifyServiceExists(ecs_obj, ecs_cluster, ecs_service)
 
 	// TODOLATER - do we want to get the listen ports for each task? or just assume a port...?
 	// readme states ports are outside the scope for now.
@@ -121,19 +107,19 @@ func doMain(current_cluster bool, aws_region string, cluster_name string, ecs_se
 	if current_cluster == true {
 		current_container_instance_arn = local_ecs_agent_metadata.ContainerInstanceArn
 	}
-	container_instances := getContainerInstanceArnsForService(ecs_obj, ecs_cluster, ecs_service, current_container_instance_arn, debug)
+	container_instances := shared.GetContainerInstanceArnsForService(ecs_obj, ecs_cluster, ecs_service, current_container_instance_arn, debug)
 	if debug == true {
 		fmt.Println("container_instances:", strings.Join(container_instances, ","))
 	}
 
 	// Get EC2 instance IDs for all container instances returned.
-	instance_ids := getEc2InstanceIdsFromContainerInstances(ecs_obj, ecs_cluster, container_instances, debug)
+	instance_ids := shared.GetEc2InstanceIdsFromContainerInstances(ecs_obj, ecs_cluster, container_instances, debug)
 	if debug == true {
 		fmt.Println("instance_ids:", strings.Join(instance_ids, ","))
 	}
 
 	// Get the private IP of the EC2 (container) instance running the ECS agent.
-	instance_private_ips := getEc2PrivateIpsFromInstanceIds(ec2_obj, instance_ids, debug)
+	instance_private_ips := shared.GetEc2PrivateIpsFromInstanceIds(ec2_obj, instance_ids, debug)
 	if debug == true {
 		fmt.Println("instance_private_ips:", strings.Join(instance_private_ips, ","))
 	}
