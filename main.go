@@ -26,38 +26,36 @@ type EcsAgentMetadata struct {
 }
 
 // TODO: deal with docker custom networks. for now this just hits the default bridge network IP.
-func getEcsAgentMetadata() EcsAgentMetadata {
+func getEcsAgentMetadata() (EcsAgentMetadata, error) {
 	resp, err := http.Get("http://172.17.0.1:51678/v1/metadata")
 	if err != nil {
-		fmt.Println("Error retrieving metadata from ECS agent on local Docker host (via 172.17.0.1:51678):")
-		fmt.Println(err)
-		os.Exit(1)
+		return EcsAgentMetadata{}, fmt.Errorf("Error retrieving metadata from ECS agent on local Docker host (via 172.17.0.1:51678): %s", err.Error())
 	}
 
 	defer resp.Body.Close()
 	body, read_err := ioutil.ReadAll(resp.Body)
 	if read_err != nil {
-		fmt.Println("Error reading the metadata response from ECS agent on local Docker host:")
-		fmt.Println(read_err)
-		os.Exit(1)
+		return EcsAgentMetadata{}, fmt.Errorf("Error reading the metadata response from ECS agent on local Docker host: %s", read_err.Error())
 	}
 
 	var json_data EcsAgentMetadata
 	json_data_err := json.Unmarshal(body, &json_data)
 	if json_data_err != nil {
-		fmt.Println("Error parsing JSON response from ECS agent on local Docker host:")
-		fmt.Println(json_data_err)
-		os.Exit(1)
+		return EcsAgentMetadata{}, fmt.Errorf("Error parsing JSON response from ECS agent on local Docker host: %s", json_data_err.Error())
 	}
 
-	return json_data
+	return json_data, nil
 }
 
 func doMain(current_cluster bool, aws_region string, cluster_name string, ecs_service string, debug bool) {
 	var local_ecs_agent_metadata EcsAgentMetadata
 	if current_cluster == true {
 		// Get the metadata from the ECS agent on the local Docker host.
-		local_ecs_agent_metadata = getEcsAgentMetadata()
+		local_ecs_agent_metadata, err = getEcsAgentMetadata()
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		}
 	}
 
 	var region string
@@ -90,12 +88,20 @@ func doMain(current_cluster bool, aws_region string, cluster_name string, ecs_se
 	} else {
 		// Use the user provided WAN cluster, for connecting to services in a different ECS Cluster.
 		// First we verify the cluster exists before proceeding.
-		shared.VerifyClusterExists(ecs_obj, cluster_name)
+		err := shared.VerifyClusterExists(ecs_obj, cluster_name)
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		}
 		ecs_cluster = cluster_name
 	}
 
 	// Check that the service exists.
-	shared.VerifyServiceExists(ecs_obj, ecs_cluster, ecs_service)
+	err := shared.VerifyServiceExists(ecs_obj, ecs_cluster, ecs_service)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
 
 	// TODOLATER - do we want to get the listen ports for each task? or just assume a port...?
 	// readme states ports are outside the scope for now.
@@ -106,19 +112,31 @@ func doMain(current_cluster bool, aws_region string, cluster_name string, ecs_se
 	if current_cluster == true {
 		current_container_instance_arn = local_ecs_agent_metadata.ContainerInstanceArn
 	}
-	container_instances := shared.GetContainerInstanceArnsForService(ecs_obj, ecs_cluster, ecs_service, current_container_instance_arn, debug)
+	container_instances, err := shared.GetContainerInstanceArnsForService(ecs_obj, ecs_cluster, ecs_service, current_container_instance_arn, debug)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
 	if debug == true {
 		fmt.Println("container_instances:", strings.Join(container_instances, ","))
 	}
 
 	// Get EC2 instance IDs for all container instances returned.
-	instance_ids := shared.GetEc2InstanceIdsFromContainerInstances(ecs_obj, ecs_cluster, container_instances, debug)
+	instance_ids, err := shared.GetEc2InstanceIdsFromContainerInstances(ecs_obj, ecs_cluster, container_instances, debug)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
 	if debug == true {
 		fmt.Println("instance_ids:", strings.Join(instance_ids, ","))
 	}
 
 	// Get the private IP of the EC2 (container) instance running the ECS agent.
-	instance_private_ips := shared.GetEc2PrivateIpsFromInstanceIds(ec2_obj, instance_ids, debug)
+	instance_private_ips, err := shared.GetEc2PrivateIpsFromInstanceIds(ec2_obj, instance_ids, debug)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
 	if debug == true {
 		fmt.Println("instance_private_ips:", strings.Join(instance_private_ips, ","))
 	}

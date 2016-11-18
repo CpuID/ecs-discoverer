@@ -12,21 +12,23 @@ import (
 )
 
 // Save some repetition, formatting the output of these.
-func FormatAwsError(err error) {
+func FormatAwsError(err error) string {
+	var result string
 	if awsErr, ok := err.(awserr.Error); ok {
 		// Generic AWS Error with Code, Message, and original error (if any)
-		fmt.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+		result = fmt.Sprintf("%s %s %s", awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
 		if reqErr, ok := err.(awserr.RequestFailure); ok {
 			// A service error occurred
-			fmt.Println(reqErr.StatusCode(), reqErr.RequestID())
+			result = fmt.Sprintf("%s\n%s %s %s", result, reqErr.StatusCode(), reqErr.RequestID())
 		}
 	} else {
-		fmt.Println(err.Error())
+		result = err.Error()
 	}
+	return result
 }
 
 // Verify that the ECS cluster exists.
-func VerifyClusterExists(ecs_obj *ecs.ECS, cluster string) {
+func VerifyClusterExists(ecs_obj *ecs.ECS, cluster string) error {
 	params := &ecs.DescribeClustersInput{
 		Clusters: []*string{
 			aws.String(cluster),
@@ -35,22 +37,18 @@ func VerifyClusterExists(ecs_obj *ecs.ECS, cluster string) {
 	clusters, err := ecs_obj.DescribeClusters(params)
 
 	if err != nil {
-		fmt.Println("Cannot verify if ECS cluster exists:")
-		FormatAwsError(err)
-		os.Exit(1)
+		return fmt.Errorf("Cannot verify if ECS cluster exists: %s", FormatAwsError(err))
 	}
 	if len(clusters.Clusters) == 0 {
-		fmt.Printf("Error: ECS Cluster '%s' does not exist, cannot proceed.\n", cluster)
-		os.Exit(1)
+		return fmt.Errorf("Error: ECS Cluster '%s' does not exist, cannot proceed.\n", cluster)
 	}
 	if len(clusters.Clusters) != 1 {
-		fmt.Printf("Error: Unexpected number of ECS Clusters returned when searching for '%s'. Received: %+v\n", cluster, clusters.Clusters)
-		os.Exit(1)
+		return fmt.Errorf("Error: Unexpected number of ECS Clusters returned when searching for '%s'. Received: %+v\n", cluster, clusters.Clusters)
 	}
 }
 
 // Verify that the ECS service exists.
-func VerifyServiceExists(ecs_obj *ecs.ECS, cluster string, service string) {
+func VerifyServiceExists(ecs_obj *ecs.ECS, cluster string, service string) error {
 	params := &ecs.DescribeServicesInput{
 		Cluster: &cluster,
 		Services: []*string{ // Required
@@ -60,13 +58,11 @@ func VerifyServiceExists(ecs_obj *ecs.ECS, cluster string, service string) {
 	_, err := ecs_obj.DescribeServices(params)
 
 	if err != nil {
-		fmt.Println("Cannot verify if ECS service exists:")
-		FormatAwsError(err)
-		os.Exit(1)
+		return fmt.Errorf("Cannot verify if ECS service exists: %s", FormatAwsError(err))
 	}
 }
 
-func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, service string, local_container_instance_arn string, debug bool) []string {
+func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, service string, local_container_instance_arn string, debug bool) ([]string, error) {
 	// Fetch a task list based on the service name.
 	list_tasks_params := &ecs.ListTasksInput{
 		Cluster:     &cluster,
@@ -75,14 +71,11 @@ func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	list_tasks_resp, list_tasks_err := ecs_obj.ListTasks(list_tasks_params)
 
 	if list_tasks_err != nil {
-		fmt.Println("Cannot retrieve ECS task list:")
-		FormatAwsError(list_tasks_err)
-		os.Exit(1)
+		return []string{}, fmt.Errorf("Cannot retrieve ECS task list: %s", FormatAwsError(list_tasks_err))
 	}
 
 	if len(list_tasks_resp.TaskArns) <= 0 {
-		fmt.Println("No ECS tasks found with specified filter - cluster: ", cluster, ", service:", service)
-		os.Exit(1)
+		return []string{}, fmt.Errorf("No ECS tasks found with specified filter - cluster: ", cluster, ", service:", service)
 	}
 
 	// Describe the tasks retrieved above.
@@ -93,14 +86,11 @@ func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	describe_tasks_resp, describe_tasks_err := ecs_obj.DescribeTasks(describe_tasks_params)
 
 	if describe_tasks_err != nil {
-		fmt.Println("Cannot retrieve ECS task details:")
-		FormatAwsError(describe_tasks_err)
-		os.Exit(1)
+		return []string{}, fmt.Errorf("Cannot retrieve ECS task details:", FormatAwsError(describe_tasks_err))
 	}
 
 	if len(describe_tasks_resp.Tasks) <= 0 {
-		fmt.Println("No ECS task details found with specified filter - tasks:", strings.Join(aws.StringValueSlice(list_tasks_resp.TaskArns), ", "))
-		os.Exit(1)
+		return []string{}, fmt.Errorf("No ECS task details found with specified filter - tasks:", strings.Join(aws.StringValueSlice(list_tasks_resp.TaskArns), ", "))
 	}
 
 	var result []string
@@ -115,13 +105,12 @@ func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	}
 
 	if len(result) == 0 {
-		fmt.Println("No ECS task results found in RUNNING state, no ECS container instances to return.")
-		os.Exit(1)
+		return []string{}, fmt.Errorf("No ECS task results found in RUNNING state, no ECS container instances to return.")
 	}
-	return result
+	return result, nil
 }
 
-func GetEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, container_instances []string, debug bool) []string {
+func GetEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, container_instances []string, debug bool) ([]string, error) {
 	params := &ecs.DescribeContainerInstancesInput{
 		Cluster:            aws.String(cluster),
 		ContainerInstances: aws.StringSlice(container_instances),
@@ -129,14 +118,11 @@ func GetEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, c
 	resp, err := ecs_obj.DescribeContainerInstances(params)
 
 	if err != nil {
-		fmt.Println("Cannot retrieve ECS container instance information:")
-		FormatAwsError(err)
-		os.Exit(1)
+		return []string{}, fmt.Errorf("Cannot retrieve ECS container instance information: %s", FormatAwsError(err))
 	}
 
 	if len(resp.ContainerInstances) <= 0 {
-		fmt.Println("No ECS container instances found with specified filter - cluster:", cluster, "- instances:", strings.Join(container_instances, ", "))
-		os.Exit(1)
+		return []string{}, fmt.Errorf("No ECS container instances found with specified filter - cluster:", cluster, "- instances:", strings.Join(container_instances, ", "))
 	}
 
 	var result []string
@@ -151,31 +137,26 @@ func GetEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, c
 	}
 
 	if len(result) == 0 {
-		fmt.Println("No running ECS container instances found in result set, cannot proceed.")
-		os.Exit(1)
+		return []string{}, fmt.Errorf("No running ECS container instances found in result set, cannot proceed.")
 	}
-	return result
+	return result, nil
 }
 
-func GetEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string, debug bool) []string {
+func GetEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string, debug bool) ([]string, error) {
 	params := &ec2.DescribeInstancesInput{
 		InstanceIds: aws.StringSlice(instance_ids),
 	}
 	resp, err := ec2_obj.DescribeInstances(params)
 
 	if err != nil {
-		fmt.Println("Cannot retrieve EC2 instance information:")
-		FormatAwsError(err)
-		os.Exit(1)
+		return []string{}, fmt.Errorf("Cannot retrieve EC2 instance information: %s", FormatAwsError(err))
 	}
 
 	if len(resp.Reservations) <= 0 {
-		fmt.Println("No EC2 instances found (Reservations.*) with specified Instance IDs filter: ", strings.Join(instance_ids, ", "))
-		os.Exit(1)
+		return []string{}, fmt.Errorf("No EC2 instances found (Reservations.*) with specified Instance IDs filter: ", strings.Join(instance_ids, ", "))
 	}
 	if len(resp.Reservations[0].Instances) <= 0 {
-		fmt.Println("No EC2 instances found (Reservations[0].* with specified Instance IDs filter: ", strings.Join(instance_ids, ", "))
-		os.Exit(1)
+		return []string{}, fmt.Errorf("No EC2 instances found (Reservations[0].* with specified Instance IDs filter: ", strings.Join(instance_ids, ", "))
 	}
 
 	var result []string
@@ -192,8 +173,7 @@ func GetEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string, de
 	}
 
 	if len(result) == 0 {
-		fmt.Println("No running EC2 instances found in result set, cannot proceed.")
-		os.Exit(1)
+		return []string{}, fmt.Errorf("No running EC2 instances found in result set, cannot proceed.")
 	}
-	return result
+	return result, nil
 }
