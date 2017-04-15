@@ -89,7 +89,7 @@ func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	// TODO: max 100 ARNs accepted in the below input, run in batches when len(task_arns) > 100
 	describe_tasks_params := &ecs.DescribeTasksInput{
 		Cluster: &cluster,
-		Tasks:   task_arns,
+		Tasks:   aws.StringSlice(task_arns),
 	}
 	describe_tasks_resp, describe_tasks_err := ecs_obj.DescribeTasks(describe_tasks_params)
 
@@ -98,7 +98,7 @@ func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	}
 
 	if len(describe_tasks_resp.Tasks) <= 0 {
-		return []string{}, fmt.Errorf("No ECS task details found with specified filter - tasks:", strings.Join(aws.StringValueSlice(list_tasks_resp.TaskArns), ", "))
+		return []string{}, fmt.Errorf("No ECS task details found with specified filter - tasks:", strings.Join(task_arns, ", "))
 	}
 
 	var result []string
