@@ -64,25 +64,32 @@ func VerifyServiceExists(ecs_obj *ecs.ECS, cluster string, service string) error
 }
 
 func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, service string, local_container_instance_arn string, debug bool) ([]string, error) {
+	var task_arns []string
+
 	// Fetch a task list based on the service name.
-	list_tasks_params := &ecs.ListTasksInput{
+	err := ecs_obj.ListTasksPages(&ecs.ListTasksInput{
 		Cluster:     &cluster,
 		ServiceName: &service,
-	}
-	list_tasks_resp, list_tasks_err := ecs_obj.ListTasks(list_tasks_params)
+	}, func(page *ecs.ListTasksOutput, last_page bool) bool {
+		for _, v := range page.TaskArns {
+			task_arns = append(task_arns, *v)
+		}
+		return true
+	})
 
-	if list_tasks_err != nil {
-		return []string{}, fmt.Errorf("Cannot retrieve ECS task list: %s", FormatAwsError(list_tasks_err))
+	if err != nil {
+		return []string{}, fmt.Errorf("Cannot retrieve ECS task list: %s", FormatAwsError(err))
 	}
 
-	if len(list_tasks_resp.TaskArns) <= 0 {
+	if len(task_arns) <= 0 {
 		return []string{}, fmt.Errorf("No ECS tasks found with specified filter - cluster: ", cluster, ", service:", service)
 	}
 
 	// Describe the tasks retrieved above.
+	// TODO: max 100 ARNs accepted in the below input, run in batches when len(task_arns) > 100
 	describe_tasks_params := &ecs.DescribeTasksInput{
 		Cluster: &cluster,
-		Tasks:   list_tasks_resp.TaskArns,
+		Tasks:   task_arns,
 	}
 	describe_tasks_resp, describe_tasks_err := ecs_obj.DescribeTasks(describe_tasks_params)
 
@@ -112,6 +119,7 @@ func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 }
 
 func GetEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, container_instances []string, debug bool) ([]string, error) {
+	// TODO: max 100 container instances per batch below? not documented but other API calls have that limit. test...
 	params := &ecs.DescribeContainerInstancesInput{
 		Cluster:            aws.String(cluster),
 		ContainerInstances: aws.StringSlice(container_instances),
@@ -144,33 +152,40 @@ func GetEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, c
 }
 
 func GetEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string, debug bool) ([]string, error) {
-	params := &ec2.DescribeInstancesInput{
+	var result []string
+	var page_err error
+
+	err = ec2_obj.DescribeInstancesPages(&ec2.DescribeInstancesInput{
 		InstanceIds: aws.StringSlice(instance_ids),
-	}
-	resp, err := ec2_obj.DescribeInstances(params)
+	}, func(page *ec2.DescribeInstancesOutput, last_page bool) bool {
+		if len(page.Reservations) <= 0 {
+			page_err = fmt.Errorf("No EC2 instances found (Reservations.*) with specified Instance IDs filter: ", strings.Join(instance_ids, ", "))
+			return false
+		}
+		if len(page.Reservations[0].Instances) <= 0 {
+			page_err = fmt.Errorf("No EC2 instances found (Reservations[0].* with specified Instance IDs filter: ", strings.Join(instance_ids, ", "))
+			return false
+		}
+		for idx, _ := range page.Reservations {
+			for _, value := range page.Reservations[idx].Instances {
+				if *value.State.Name == "running" {
+					result = append(result, *value.PrivateIpAddress)
+				} else {
+					if debug == true {
+						fmt.Println(*value.InstanceId, "is not in a running state, excluded from results.")
+					}
+				}
+			}
+		}
+		return true
+	})
 
 	if err != nil {
 		return []string{}, fmt.Errorf("Cannot retrieve EC2 instance information: %s", FormatAwsError(err))
 	}
 
-	if len(resp.Reservations) <= 0 {
-		return []string{}, fmt.Errorf("No EC2 instances found (Reservations.*) with specified Instance IDs filter: ", strings.Join(instance_ids, ", "))
-	}
-	if len(resp.Reservations[0].Instances) <= 0 {
-		return []string{}, fmt.Errorf("No EC2 instances found (Reservations[0].* with specified Instance IDs filter: ", strings.Join(instance_ids, ", "))
-	}
-
-	var result []string
-	for idx, _ := range resp.Reservations {
-		for _, value := range resp.Reservations[idx].Instances {
-			if *value.State.Name == "running" {
-				result = append(result, *value.PrivateIpAddress)
-			} else {
-				if debug == true {
-					fmt.Println(*value.InstanceId, "is not in a running state, excluded from results.")
-				}
-			}
-		}
+	if page_err != nil {
+		return []string{}, fmt.Errorf("Cannot retrieve EC2 instance information (page error): %s", FormatAwsError(page_err))
 	}
 
 	if len(result) == 0 {
