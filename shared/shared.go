@@ -155,7 +155,7 @@ func GetEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string, de
 	var result []string
 	var page_err error
 
-	err = ec2_obj.DescribeInstancesPages(&ec2.DescribeInstancesInput{
+	err := ec2_obj.DescribeInstancesPages(&ec2.DescribeInstancesInput{
 		InstanceIds: aws.StringSlice(instance_ids),
 	}, func(page *ec2.DescribeInstancesOutput, last_page bool) bool {
 		if len(page.Reservations) <= 0 {
