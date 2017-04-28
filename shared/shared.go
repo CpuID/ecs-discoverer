@@ -18,7 +18,7 @@ func FormatAwsError(err error) string {
 		result = fmt.Sprintf("%s %s %s", awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
 		if reqErr, ok := err.(awserr.RequestFailure); ok {
 			// A service error occurred
-			result = fmt.Sprintf("%s\n%s %s %s", result, reqErr.StatusCode(), reqErr.RequestID())
+			result = fmt.Sprintf("%s\n%d %s", result, reqErr.StatusCode(), reqErr.RequestID())
 		}
 	} else {
 		result = err.Error()
@@ -82,7 +82,7 @@ func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	}
 
 	if len(task_arns) <= 0 {
-		return []string{}, fmt.Errorf("No ECS tasks found with specified filter - cluster: ", cluster, ", service:", service)
+		return []string{}, fmt.Errorf("No ECS tasks found with specified filter - cluster: %s, service: %s", cluster, service)
 	}
 
 	// Describe the tasks retrieved above.
@@ -94,11 +94,11 @@ func GetContainerInstanceArnsForService(ecs_obj *ecs.ECS, cluster string, servic
 	describe_tasks_resp, describe_tasks_err := ecs_obj.DescribeTasks(describe_tasks_params)
 
 	if describe_tasks_err != nil {
-		return []string{}, fmt.Errorf("Cannot retrieve ECS task details:", FormatAwsError(describe_tasks_err))
+		return []string{}, fmt.Errorf("Cannot retrieve ECS task details: %s", FormatAwsError(describe_tasks_err))
 	}
 
 	if len(describe_tasks_resp.Tasks) <= 0 {
-		return []string{}, fmt.Errorf("No ECS task details found with specified filter - tasks:", strings.Join(task_arns, ", "))
+		return []string{}, fmt.Errorf("No ECS task details found with specified filter - tasks: %s", strings.Join(task_arns, ", "))
 	}
 
 	var result []string
@@ -131,7 +131,7 @@ func GetEc2InstanceIdsFromContainerInstances(ecs_obj *ecs.ECS, cluster string, c
 	}
 
 	if len(resp.ContainerInstances) <= 0 {
-		return []string{}, fmt.Errorf("No ECS container instances found with specified filter - cluster:", cluster, "- instances:", strings.Join(container_instances, ", "))
+		return []string{}, fmt.Errorf("No ECS container instances found with specified filter - cluster: %s - instances: %s", cluster, strings.Join(container_instances, ", "))
 	}
 
 	var result []string
@@ -159,11 +159,11 @@ func GetEc2PrivateIpsFromInstanceIds(ec2_obj *ec2.EC2, instance_ids []string, de
 		InstanceIds: aws.StringSlice(instance_ids),
 	}, func(page *ec2.DescribeInstancesOutput, last_page bool) bool {
 		if len(page.Reservations) <= 0 {
-			page_err = fmt.Errorf("No EC2 instances found (Reservations.*) with specified Instance IDs filter: ", strings.Join(instance_ids, ", "))
+			page_err = fmt.Errorf("No EC2 instances found (Reservations.*) with specified Instance IDs filter: %s", strings.Join(instance_ids, ", "))
 			return false
 		}
 		if len(page.Reservations[0].Instances) <= 0 {
-			page_err = fmt.Errorf("No EC2 instances found (Reservations[0].* with specified Instance IDs filter: ", strings.Join(instance_ids, ", "))
+			page_err = fmt.Errorf("No EC2 instances found (Reservations[0].* with specified Instance IDs filter: %s", strings.Join(instance_ids, ", "))
 			return false
 		}
 		for idx, _ := range page.Reservations {
