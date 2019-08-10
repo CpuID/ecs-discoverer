@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 	"testing"
 )
 

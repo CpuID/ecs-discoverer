@@ -16,7 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ecs"
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
 type EcsAgentMetadata struct {
